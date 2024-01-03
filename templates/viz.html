@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flask App Visualization</title>
+    <style>
+    .tooltip {
+    position: relative;
+    cursor: pointer;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background-color: black;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1;
+    visibility: hidden;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+        .container {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            flex-direction: row;
+            height: 100vh;
+            padding-left: 100px;
+        }
+        .box {
+    line-height: 1.2; /* Reduced line height */
+    width: 600px;
+    height: 125px;
+    margin: 10px;
+    padding: 10px;
+    text-align: center;
+    /* Removed vertical-align to test its effect */
+    border: 5px solid;
+    font-weight: bold;
+    overflow: auto;
+}
+
+        .green { border-color: green; }
+        .red { border-color: red; }
+        .sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 300px;
+            padding: 20px;
+            height: 100vh;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
+            background: white;
+        }
+        .loading {
+            display: none;
+            margin-top: 10px;
+        }
+        .button-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 5px;
+        }
+        .thumb-button {
+            border: none;
+            background-color: transparent;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <!-- Add inside your form or another suitable place -->
+<div>
+    <button type="button" id="recordButton" class="cool-button">Start Recording</button>
+    <audio id="audioPlayback" controls></audio>
+</div>
+
+        <h2>Enter Query</h2>
+        <form id="queryForm">
+            <input type="text" name="query" placeholder="Enter query">
+            <input type="text" name="lmprompt1" placeholder="layer 1 prompt.">
+            <input type="text" name="lmprompt2" placeholder="layer 2 prompt.">
+            <input type="text" name="lmprompt3" placeholder="layer 3 prompt.">
+            <input type="text" name="lang" placeholder="primary language">
+            <label for="fastToggle">Fast</label>
+            <input type="checkbox" id="fastToggle" name="fast" value="fast">
+            <button type="submit">Submit</button>
+            <div class="loading">Loading...</div>
+        </form>
+    </div>
+
+    <div class="container">
+        <div>
+            <h2>Response</h2>
+            <div id="level1" class="box red">Level 1 Response</div>
+            <div class="button-container">
+                <button class="thumb-button" onclick="sendFeedback('level1', 'up')">👍</button>
+                <button class="thumb-button" onclick="sendFeedback('level1', 'down')">👎</button>
+            </div>
+            <div id="level2" class="box red">Level 2 Response</div>
+            <div class="button-container">
+                <button class="thumb-button" onclick="sendFeedback('level2', 'up')">👍</button>
+                <button class="thumb-button" onclick="sendFeedback('level2', 'down')">👎</button>
+            </div>
+            <div id="level3" class="box red">Level 3 Response</div>
+            <div class="button-container">
+                <button class="thumb-button" onclick="sendFeedback('level3', 'up')">👍</button>
+                <button class="thumb-button" onclick="sendFeedback('level3', 'down')">👎</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+    
+        document.getElementById('recordButton').addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                document.getElementById('recordButton').textContent = 'Start Recording';
+            } else {
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        mediaRecorder = new MediaRecorder(stream);
+                        mediaRecorder.start();
+    
+                        mediaRecorder.addEventListener('dataavailable', event => {
+                            audioChunks.push(event.data);
+                        });
+    
+                        mediaRecorder.addEventListener('stop', () => {
+                            const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                            const audioUrl = URL.createObjectURL(audioBlob);
+                            document.getElementById('audioPlayback').src = audioUrl;
+                        });
+    
+                        document.getElementById('recordButton').textContent = 'Stop Recording';
+                    });
+            }
+        });
+
+
+function getLevelResponse(level, query, lmprompt1, lmprompt2, lmprompt3, lang, fast) {
+    const formData = new FormData();
+    formData.append('query', query);
+    formData.append('lmprompt1', lmprompt1);
+    formData.append('lmprompt2', lmprompt2);
+    formData.append('lmprompt3', lmprompt3);
+    formData.append('fast', fast);
+    formData.append('lang', lang);
+    
+    
+    if (audioChunks.length > 0) {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        formData.append('audio', audioBlob);
+        audioChunks = [];
+    }
+
+    fetch('/' + level, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        updateBox(level, data, query, lmprompt1, lmprompt2, lmprompt3, lang, fast);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+    });
+}
+
+
+function replaceWithNumbers(text) {
+    let count = 0;
+    return text.replace(/\[(.*?)\]/g, function(match, group) {
+        count++;
+        return `[<span class="tooltip" data-tooltip="${group}">${count}</span>]`;
+    });
+}
+
+
+
+        function updateBox(level, data, query, lmprompt1, lmprompt2, lmprompt3, lang, fast) {
+            const box = document.getElementById(level);
+            const processedResponse = replaceWithNumbers(data.response);
+            box.innerHTML = '<strong>' + level.toUpperCase() + '</strong>: ' + processedResponse;
+            if (data.sufficient) {
+                box.classList.remove('red');
+                box.classList.add('green');
+                document.querySelector('.loading').style.display = 'none';
+            } else {
+                box.classList.remove('green');
+                box.classList.add('red');
+                if (level === 'level1') {
+                    getLevelResponse('level2', query, lmprompt1, lmprompt2, lmprompt3, lang, fast);
+                } else if (level === 'level2') {
+                    getLevelResponse('level3', query, lmprompt1, lmprompt2, lmprompt3, lang, fast);
+                }
+            }
+        }
+
+
+        function sendFeedback(level, feedbackType) {
+            const responseText = document.getElementById(level).innerText;
+            fetch('/feedback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ level: level, feedback: feedbackType, response: responseText }),
+            })
+            .then(response => response.json())
+            .then(data => console.log(data));
+        }
+    
+        document.getElementById('queryForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const query = document.getElementsByName('query')[0].value;
+            const lmprompt1 = document.getElementsByName('lmprompt1')[0].value;
+            const lmprompt2 = document.getElementsByName('lmprompt2')[0].value;
+            const lmprompt3 = document.getElementsByName('lmprompt3')[0].value;
+            const fast = document.getElementById('fastToggle').checked;
+            const lang = document.getElementsByName('lang')[0].value;
+            document.querySelector('.loading').style.display = 'block';
+            getLevelResponse('level1', query, lmprompt1, lmprompt2, lmprompt3, lang, fast);
+        });
+    </script>
+    
+</body>
+</html>
