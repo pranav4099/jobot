@@ -1,0 +1,6 @@
+Flask==2.1.1
+weaviate==2.4.0
+openai==0.27.0
+gspread==4.0.0
+google-auth==2.3.0
+openai==1.6.1
